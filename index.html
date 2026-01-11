@@ -2,136 +2,106 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tabela Clara - HeatMap Real</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Mapa de Calor</title>
     <style>
-        :root { --primary-bg: #ffffff; --accent-color: #4A90E2; --shadow: 0 4px 20px rgba(0,0,0,0.3); }
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
-        #map { height: 100vh; width: 100%; }
-
-        /* Barra de Busca */
-        .search-container {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 10; width: 90%; max-width: 500px; display: flex;
-            background: var(--primary-bg); padding: 8px; border-radius: 12px; box-shadow: var(--shadow);
-        }
-        input { flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; }
-        .btn-search { background: var(--accent-color); color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-
-        /* Legenda */
-        .legend {
-            position: absolute; bottom: 30px; left: 20px; background: white;
-            padding: 12px; border-radius: 10px; box-shadow: var(--shadow); z-index: 10;
-        }
-        .legend-item { display: flex; align-items: center; font-size: 12px; margin: 4px 0; }
-        .color-box { width: 30px; height: 10px; margin-right: 8px; border-radius: 2px; }
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; background: #eee; }
+        .ui { position: absolute; top: 10px; z-index: 100; width: 100%; text-align: center; }
+        input { padding: 10px; width: 60%; border-radius: 5px; border: 1px solid #ccc; }
+        button { padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div class="search-container">
-        <input type="text" id="addressInput" placeholder="Busque um endereço...">
-        <button class="btn-search" onclick="handleSearch()">Buscar</button>
+    <div class="ui">
+        <input type="text" id="addressInput" placeholder="Digite um lugar...">
+        <button onclick="handleSearch()">BUSCAR</button>
     </div>
 
-    <div class="legend">
-        <strong>Legenda Térmica</strong>
-        <div class="legend-item"><div class="color-box" style="background: red"></div> Quente (>30°C)</div>
-        <div class="legend-item"><div class="color-box" style="background: green"></div> Agradável (22°C)</div>
-        <div class="legend-item"><div class="color-box" style="background: blue"></div> Frio (<15°C)</div>
-    </div>
-
-    <div id="map"></div>
-
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU&libraries=places,visualization"></script>
+    <div id="map">Carregando mapa...</div>
 
     <script>
-        let map, currentMarker, heatmap, autocomplete;
+        const GOOGLE_KEY = "AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU";
         const WEATHER_KEY = "14211cd3bc55f9316167faf5cee6cc07";
 
+        function gm_authFailure() { 
+            alert("Erro de Autenticação no Google Maps. Verifique se a chave está ativa e se as APIs de Maps, Places e Visualization estão ligadas no Console do Google.");
+        }
+    </script>
+    
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU&libraries=places,visualization&callback=initMap" async defer></script>
+
+    <script>
+        let map, currentMarker, heatmap;
+
         function initMap() {
+            console.log("Google Maps iniciado");
             map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 14, center: { lat: -23.55, lng: -46.63 },
-                disableDefaultUI: true, zoomControl: true
+                zoom: 12,
+                center: { lat: -23.55, lng: -46.63 }
             });
 
-            autocomplete = new google.maps.places.Autocomplete(document.getElementById("addressInput"));
-            autocomplete.addListener("place_changed", () => {
-                const place = autocomplete.getPlace();
-                if (place.geometry) processLocation(place.geometry.location);
-            });
-
-            // Localização Inicial
+            // Tenta Geolocalização
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    const myLoc = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-                    processLocation(myLoc);
-                });
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => processLocation(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude)),
+                    () => console.log("Geolocalização negada")
+                );
             }
         }
 
         async function processLocation(location) {
-            // Limpa busca anterior
-            document.getElementById('addressInput').value = "";
-            if (currentMarker) currentMarker.setMap(null);
-            if (heatmap) heatmap.setMap(null);
+            try {
+                // Busca clima real
+                const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${location.lat()}&lon=${location.lng()}&units=metric&appid=${WEATHER_KEY}`);
+                const data = await res.json();
+                
+                if(data.cod !== 200) throw new Error(data.message);
+                
+                const temp = Math.round(data.main.temp);
+                document.getElementById('addressInput').value = ""; // Limpa busca
 
-            // Busca Clima Real
-            const lat = location.lat();
-            const lng = location.lng();
-            const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&units=metric&appid=${WEATHER_KEY}`);
-            const data = await response.json();
-            const temp = Math.round(data.main.temp);
+                // Limpa mapas anteriores
+                if (currentMarker) currentMarker.setMap(null);
+                if (heatmap) heatmap.setMap(null);
 
-            map.setCenter(location);
-            map.setZoom(14);
+                map.setCenter(location);
 
-            // Termômetro Customizado (SVG)
-            currentMarker = new google.maps.Marker({
-                position: location,
-                map: map,
-                icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
-                            <path fill="${temp > 25 ? 'red' : 'blue'}" d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4z"/>
-                            <text x="12" y="17" fill="white" font-size="5" font-weight="bold" text-anchor="middle">${temp}°C</text>
-                        </svg>`),
-                    anchor: new google.maps.Point(20, 40)
-                }
-            });
-
-            // Mapa de Calor dinâmico (3km)
-            generateHeatEffect(location, temp);
-        }
-
-        function generateHeatEffect(center, temp) {
-            const points = [];
-            // Define o peso do calor baseado na temperatura real
-            const weight = temp > 20 ? (temp / 10) : 1;
-            
-            for (let i = 0; i < 50; i++) {
-                const offsetLat = (Math.random() - 0.5) * 0.04; 
-                const offsetLng = (Math.random() - 0.5) * 0.04;
-                points.push({
-                    location: new google.maps.LatLng(center.lat() + offsetLat, center.lng() + offsetLng),
-                    weight: weight
+                // Criar Marcador Termômetro Simples
+                currentMarker = new google.maps.Marker({
+                    position: location,
+                    map: map,
+                    label: { text: `${temp}°C`, color: "white", fontWeight: "bold" },
+                    title: `Temperatura: ${temp}°C`
                 });
-            }
 
-            heatmap = new google.maps.visualization.HeatmapLayer({
-                data: points, map: map, radius: 80, opacity: 0.6
-            });
+                // Simular calor no entorno
+                const heatPoints = [];
+                for(let i=0; i<30; i++) {
+                    heatPoints.push({
+                        location: new google.maps.LatLng(location.lat() + (Math.random()-0.5)*0.02, location.lng() + (Math.random()-0.5)*0.02),
+                        weight: temp > 25 ? 5 : 1
+                    });
+                }
+                heatmap = new google.maps.visualization.HeatmapLayer({ data: heatPoints, map: map, radius: 50 });
+
+            } catch (err) {
+                alert("Erro ao buscar clima: " + err.message);
+            }
         }
 
         function handleSearch() {
-            const address = document.getElementById('addressInput').value;
-            if (address) {
-                const geocoder = new google.maps.Geocoder();
-                geocoder.geocode({ address }, (res) => processLocation(res[0].geometry.location));
-            }
+            const addr = document.getElementById('addressInput').value;
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ address: addr }, (results, status) => {
+                if (status === "OK") {
+                    processLocation(results[0].geometry.location);
+                } else {
+                    alert("Local não encontrado: " + status);
+                }
+            });
         }
-
-        window.onload = initMap;
     </script>
 </body>
 </html>
