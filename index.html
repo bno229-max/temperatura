@@ -3,89 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tabela Clara - HeatMap Pro</title>
-    
+    <title>Tabela Clara - HeatMap Real</title>
     <style>
-        :root {
-            --primary-bg: rgba(255, 255, 255, 0.98);
-            --accent-color: #4A90E2;
-            --shadow: 0 4px 20px rgba(0,0,0,0.25);
-        }
-
+        :root { --primary-bg: #ffffff; --accent-color: #4A90E2; --shadow: 0 4px 20px rgba(0,0,0,0.3); }
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
-
         #map { height: 100vh; width: 100%; }
 
-        /* Busca e Autocomplete */
+        /* Barra de Busca */
         .search-container {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
-            width: 90%;
-            max-width: 500px;
-            display: flex;
-            background: var(--primary-bg);
-            padding: 8px;
-            border-radius: 12px;
-            box-shadow: var(--shadow);
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 10; width: 90%; max-width: 500px; display: flex;
+            background: var(--primary-bg); padding: 8px; border-radius: 12px; box-shadow: var(--shadow);
         }
+        input { flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; }
+        .btn-search { background: var(--accent-color); color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-        input {
-            flex: 1;
-            border: none;
-            padding: 12px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        .btn-search {
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 0 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        /* Legenda de Cores */
+        /* Legenda */
         .legend {
-            position: absolute;
-            bottom: 40px;
-            left: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: var(--shadow);
-            z-index: 10;
-            font-size: 12px;
+            position: absolute; bottom: 30px; left: 20px; background: white;
+            padding: 12px; border-radius: 10px; box-shadow: var(--shadow); z-index: 10;
         }
-
-        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
-        .color-box { width: 20px; height: 10px; margin-right: 10px; border-radius: 2px; }
-
-        /* Estilo do Termômetro (Marker Customizado) */
-        .thermometer-icon {
-            font-size: 40px;
-            filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .temp-badge {
-            background: black;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 5px;
-            font-size: 12px;
-            margin-top: -10px;
-        }
-
-        /* Ajuste do Autocomplete do Google */
-        .pac-container { border-radius: 10px; margin-top: 5px; box-shadow: var(--shadow); border: none; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; margin: 4px 0; }
+        .color-box { width: 30px; height: 10px; margin-right: 8px; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -96,10 +35,10 @@
     </div>
 
     <div class="legend">
-        <strong>Temperatura</strong>
-        <div class="legend-item"><div class="color-box" style="background: rgba(255, 0, 0, 1)"></div> +35°C (Quente)</div>
-        <div class="legend-item"><div class="color-box" style="background: rgba(0, 255, 0, 1)"></div> 25°C (Agradável)</div>
-        <div class="legend-item"><div class="color-box" style="background: rgba(0, 0, 255, 1)"></div> -15°C (Frio)</div>
+        <strong>Legenda Térmica</strong>
+        <div class="legend-item"><div class="color-box" style="background: red"></div> Quente (>30°C)</div>
+        <div class="legend-item"><div class="color-box" style="background: green"></div> Agradável (22°C)</div>
+        <div class="legend-item"><div class="color-box" style="background: blue"></div> Frio (<15°C)</div>
     </div>
 
     <div id="map"></div>
@@ -107,124 +46,88 @@
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU&libraries=places,visualization"></script>
 
     <script>
-        let map;
-        let currentMarker = null;
-        let heatmap = null;
-        let autocomplete;
+        let map, currentMarker, heatmap, autocomplete;
+        const WEATHER_KEY = "14211cd3bc55f9316167faf5cee6cc07";
 
         function initMap() {
             map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 14,
-                center: { lat: -23.55, lng: -46.63 },
-                disableDefaultUI: true,
-                zoomControl: true
+                zoom: 14, center: { lat: -23.55, lng: -46.63 },
+                disableDefaultUI: true, zoomControl: true
             });
 
-            // Configurar Autocomplete
-            const input = document.getElementById("addressInput");
-            autocomplete = new google.maps.places.Autocomplete(input);
-            autocomplete.bindTo("bounds", map);
-
-            // Se o usuário clicar em uma sugestão, já dispara a busca
+            autocomplete = new google.maps.places.Autocomplete(document.getElementById("addressInput"));
             autocomplete.addListener("place_changed", () => {
                 const place = autocomplete.getPlace();
-                if (place.geometry) {
-                    processLocation(place.geometry.location, place.formatted_address);
-                }
+                if (place.geometry) processLocation(place.geometry.location);
             });
 
-            getLocation(); // Tentar pegar localização atual ao iniciar
+            // Localização Inicial
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const myLoc = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+                    processLocation(myLoc);
+                });
+            }
         }
 
-        function handleSearch() {
-            const address = document.getElementById('addressInput').value;
-            if (!address) return;
-
-            const geocoder = new google.maps.Geocoder();
-            geocoder.geocode({ address: address }, (results, status) => {
-                if (status === "OK") {
-                    processLocation(results[0].geometry.location, results[0].formatted_address);
-                }
-            });
-        }
-
-        function processLocation(location, title) {
-            // 1. Limpa o input de busca conforme solicitado
+        async function processLocation(location) {
+            // Limpa busca anterior
             document.getElementById('addressInput').value = "";
-
-            // 2. Limpa elementos anteriores
             if (currentMarker) currentMarker.setMap(null);
             if (heatmap) heatmap.setMap(null);
 
-            map.setCenter(location);
-            map.setZoom(14); // Zoom ideal para ver o raio de 3km
+            // Busca Clima Real
+            const lat = location.lat();
+            const lng = location.lng();
+            const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&units=metric&appid=${WEATHER_KEY}`);
+            const data = await response.json();
+            const temp = Math.round(data.main.temp);
 
-            // 3. Adiciona o Termômetro Customizado
-            const temp = Math.floor(Math.random() * (36 - 16) + 16);
-            
-            // Usando OverlayView ou Marker com ícone de fonte
+            map.setCenter(location);
+            map.setZoom(14);
+
+            // Termômetro Customizado (SVG)
             currentMarker = new google.maps.Marker({
                 position: location,
                 map: map,
                 icon: {
                     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="red">
-                            <path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4zm-3-9c.55 0 1 .45 1 1v3h-2V5c0-.55.45-1 1-1z"/>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
+                            <path fill="${temp > 25 ? 'red' : 'blue'}" d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4z"/>
+                            <text x="12" y="17" fill="white" font-size="5" font-weight="bold" text-anchor="middle">${temp}°C</text>
                         </svg>`),
-                    scaledSize: new google.maps.Size(50, 50),
-                    anchor: new google.maps.Point(25, 45)
+                    anchor: new google.maps.Point(20, 40)
                 }
             });
 
-            generateHeatmap(location, temp);
+            // Mapa de Calor dinâmico (3km)
+            generateHeatEffect(location, temp);
         }
 
-        function generateHeatmap(center, baseTemp) {
-            // Gera pontos de calor num raio de aproximadamente 3km
+        function generateHeatEffect(center, temp) {
             const points = [];
-            const numPoints = 40; // Densidade do calor
-
-            for (let i = 0; i < numPoints; i++) {
-                // Cálculo de offset aleatório dentro de ~3km
-                const latOffset = (Math.random() - 0.5) * 0.05; 
-                const lngOffset = (Math.random() - 0.5) * 0.05;
-                
+            // Define o peso do calor baseado na temperatura real
+            const weight = temp > 20 ? (temp / 10) : 1;
+            
+            for (let i = 0; i < 50; i++) {
+                const offsetLat = (Math.random() - 0.5) * 0.04; 
+                const offsetLng = (Math.random() - 0.5) * 0.04;
                 points.push({
-                    location: new google.maps.LatLng(center.lat() + latOffset, center.lng() + lngOffset),
-                    weight: Math.random() * 5 // Intensidade do calor
+                    location: new google.maps.LatLng(center.lat() + offsetLat, center.lng() + offsetLng),
+                    weight: weight
                 });
             }
 
             heatmap = new google.maps.visualization.HeatmapLayer({
-                data: points,
-                map: map,
-                radius: 60, // Tamanho da mancha
-                opacity: 0.7,
-                gradient: [
-                    "rgba(0, 255, 255, 0)",
-                    "rgba(0, 255, 255, 1)",
-                    "rgba(0, 191, 255, 1)",
-                    "rgba(0, 127, 255, 1)",
-                    "rgba(0, 63, 255, 1)",
-                    "rgba(0, 0, 255, 1)",
-                    "rgba(0, 0, 223, 1)",
-                    "rgba(0, 0, 191, 1)",
-                    "rgba(0, 0, 159, 1)",
-                    "rgba(0, 0, 127, 1)",
-                    "rgba(63, 0, 91, 1)",
-                    "rgba(127, 0, 63, 1)",
-                    "rgba(191, 0, 31, 1)",
-                    "rgba(255, 0, 0, 1)"
-                ]
+                data: points, map: map, radius: 80, opacity: 0.6
             });
         }
 
-        function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition((position) => {
-                    const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-                    processLocation(new google.maps.LatLng(pos.lat, pos.lng), "Minha Localização");
-                });
+        function handleSearch() {
+            const address = document.getElementById('addressInput').value;
+            if (address) {
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ address }, (res) => processLocation(res[0].geometry.location));
             }
         }
 
