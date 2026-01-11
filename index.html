@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tabela Clara - HeatMap</title>
+    <title>Tabela Clara - HeatMap Pro</title>
     
     <style>
         :root {
-            --primary-bg: rgba(255, 255, 255, 0.95);
+            --primary-bg: rgba(255, 255, 255, 0.98);
             --accent-color: #4A90E2;
-            --danger: #ff4757;
-            --shadow: 0 4px 15px rgba(0,0,0,0.2);
+            --shadow: 0 4px 20px rgba(0,0,0,0.25);
         }
 
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Roboto', sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
 
         #map { height: 100vh; width: 100%; }
 
-        /* Barra de Busca Estilizada */
+        /* Busca e Autocomplete */
         .search-container {
             position: absolute;
             top: 20px;
@@ -28,17 +27,15 @@
             max-width: 500px;
             display: flex;
             background: var(--primary-bg);
-            padding: 5px;
-            border-radius: 30px;
+            padding: 8px;
+            border-radius: 12px;
             box-shadow: var(--shadow);
-            backdrop-filter: blur(5px);
         }
 
         input {
             flex: 1;
             border: none;
-            background: transparent;
-            padding: 12px 20px;
+            padding: 12px;
             font-size: 16px;
             outline: none;
         }
@@ -47,135 +44,189 @@
             background: var(--accent-color);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 25px;
+            padding: 0 20px;
+            border-radius: 8px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.3s;
         }
 
-        .btn-search:active { transform: scale(0.95); }
-
-        /* Pin de Temperatura Customizado */
-        .temp-label {
-            background: var(--danger);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            border: 2px solid white;
+        /* Legenda de Cores */
+        .legend {
+            position: absolute;
+            bottom: 40px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
             box-shadow: var(--shadow);
-            font-size: 14px;
+            z-index: 10;
+            font-size: 12px;
         }
+
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .color-box { width: 20px; height: 10px; margin-right: 10px; border-radius: 2px; }
+
+        /* Estilo do Termômetro (Marker Customizado) */
+        .thermometer-icon {
+            font-size: 40px;
+            filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .temp-badge {
+            background: black;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 5px;
+            font-size: 12px;
+            margin-top: -10px;
+        }
+
+        /* Ajuste do Autocomplete do Google */
+        .pac-container { border-radius: 10px; margin-top: 5px; box-shadow: var(--shadow); border: none; }
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="addressInput" placeholder="Digite um endereço...">
+        <input type="text" id="addressInput" placeholder="Busque um endereço...">
         <button class="btn-search" onclick="handleSearch()">Buscar</button>
+    </div>
+
+    <div class="legend">
+        <strong>Temperatura</strong>
+        <div class="legend-item"><div class="color-box" style="background: rgba(255, 0, 0, 1)"></div> +35°C (Quente)</div>
+        <div class="legend-item"><div class="color-box" style="background: rgba(0, 255, 0, 1)"></div> 25°C (Agradável)</div>
+        <div class="legend-item"><div class="color-box" style="background: rgba(0, 0, 255, 1)"></div> -15°C (Frio)</div>
     </div>
 
     <div id="map"></div>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU&libraries=visualization"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAyeljGisp0yk242H4s3VC_xFeBwESDrjU&libraries=places,visualization"></script>
 
     <script>
         let map;
         let currentMarker = null;
         let heatmap = null;
+        let autocomplete;
 
         function initMap() {
-            // Inicializa o mapa centrado no Brasil
             map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 5,
-                center: { lat: -14.235, lng: -51.925 },
+                zoom: 14,
+                center: { lat: -23.55, lng: -46.63 },
                 disableDefaultUI: true,
-                zoomControl: true,
-                styles: [ /* Estilo Silver/Clean */
-                    { "featureType": "poi", "stylers": [{ "visibility": "off" }] }
-                ]
+                zoomControl: true
             });
 
-            // Tenta localizar o usuário ao abrir
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition((position) => {
-                    const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-                    map.setCenter(pos);
-                    map.setZoom(15);
-                    addTemperatureMarker(pos, "Sua Localização");
-                });
-            }
+            // Configurar Autocomplete
+            const input = document.getElementById("addressInput");
+            autocomplete = new google.maps.places.Autocomplete(input);
+            autocomplete.bindTo("bounds", map);
+
+            // Se o usuário clicar em uma sugestão, já dispara a busca
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+                if (place.geometry) {
+                    processLocation(place.geometry.location, place.formatted_address);
+                }
+            });
+
+            getLocation(); // Tentar pegar localização atual ao iniciar
         }
 
-        async function handleSearch() {
+        function handleSearch() {
             const address = document.getElementById('addressInput').value;
             if (!address) return;
 
             const geocoder = new google.maps.Geocoder();
-            
             geocoder.geocode({ address: address }, (results, status) => {
                 if (status === "OK") {
-                    const location = results[0].geometry.location;
-                    
-                    // 1. Limpa marcador anterior
-                    if (currentMarker) currentMarker.setMap(null);
-                    
-                    map.setCenter(location);
-                    map.setZoom(16);
-                    
-                    addTemperatureMarker(location, results[0].formatted_address);
-                    showHeatEffect(location);
-                } else {
-                    alert("Local não encontrado.");
+                    processLocation(results[0].geometry.location, results[0].formatted_address);
                 }
             });
         }
 
-        function addTemperatureMarker(location, title) {
-            // Simulação de temperatura (Integrar com OpenWeather depois)
-            const temp = Math.floor(Math.random() * (38 - 15) + 15);
-            
-            // Criando um elemento HTML para o PIN
-            const label = document.createElement('div');
-            label.className = 'temp-label';
-            label.innerHTML = `🌡️ ${temp}°C`;
+        function processLocation(location, title) {
+            // 1. Limpa o input de busca conforme solicitado
+            document.getElementById('addressInput').value = "";
 
+            // 2. Limpa elementos anteriores
+            if (currentMarker) currentMarker.setMap(null);
+            if (heatmap) heatmap.setMap(null);
+
+            map.setCenter(location);
+            map.setZoom(14); // Zoom ideal para ver o raio de 3km
+
+            // 3. Adiciona o Termômetro Customizado
+            const temp = Math.floor(Math.random() * (36 - 16) + 16);
+            
+            // Usando OverlayView ou Marker com ícone de fonte
             currentMarker = new google.maps.Marker({
                 position: location,
                 map: map,
-                title: title,
-                // Usando ícone invisível para mostrar apenas o label customizado se desejar, 
-                // ou apenas o marker padrão com InfoWindow:
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="red">
+                            <path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4zm-3-9c.55 0 1 .45 1 1v3h-2V5c0-.55.45-1 1-1z"/>
+                        </svg>`),
+                    scaledSize: new google.maps.Size(50, 50),
+                    anchor: new google.maps.Point(25, 45)
+                }
             });
 
-            const infowindow = new google.maps.InfoWindow({
-                content: `<div style="color:black"><b>${title}</b><br>Temperatura: ${temp}°C</div>`
-            });
-            infowindow.open(map, currentMarker);
+            generateHeatmap(location, temp);
         }
 
-        function showHeatEffect(location) {
-            // Efeito de Mapa de Calor ao redor do ponto buscado
-            const heatData = [
-                {location: location, weight: 3},
-                new google.maps.LatLng(location.lat() + 0.001, location.lng() + 0.001),
-                new google.maps.LatLng(location.lat() - 0.001, location.lng() - 0.001)
-            ];
+        function generateHeatmap(center, baseTemp) {
+            // Gera pontos de calor num raio de aproximadamente 3km
+            const points = [];
+            const numPoints = 40; // Densidade do calor
 
-            if (heatmap) heatmap.setMap(null);
+            for (let i = 0; i < numPoints; i++) {
+                // Cálculo de offset aleatório dentro de ~3km
+                const latOffset = (Math.random() - 0.5) * 0.05; 
+                const lngOffset = (Math.random() - 0.5) * 0.05;
+                
+                points.push({
+                    location: new google.maps.LatLng(center.lat() + latOffset, center.lng() + lngOffset),
+                    weight: Math.random() * 5 // Intensidade do calor
+                });
+            }
 
             heatmap = new google.maps.visualization.HeatmapLayer({
-                data: heatData,
+                data: points,
                 map: map,
-                radius: 50
+                radius: 60, // Tamanho da mancha
+                opacity: 0.7,
+                gradient: [
+                    "rgba(0, 255, 255, 0)",
+                    "rgba(0, 255, 255, 1)",
+                    "rgba(0, 191, 255, 1)",
+                    "rgba(0, 127, 255, 1)",
+                    "rgba(0, 63, 255, 1)",
+                    "rgba(0, 0, 255, 1)",
+                    "rgba(0, 0, 223, 1)",
+                    "rgba(0, 0, 191, 1)",
+                    "rgba(0, 0, 159, 1)",
+                    "rgba(0, 0, 127, 1)",
+                    "rgba(63, 0, 91, 1)",
+                    "rgba(127, 0, 63, 1)",
+                    "rgba(191, 0, 31, 1)",
+                    "rgba(255, 0, 0, 1)"
+                ]
             });
         }
 
-        // Permitir busca ao apertar Enter
-        document.getElementById('addressInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleSearch();
-        });
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    processLocation(new google.maps.LatLng(pos.lat, pos.lng), "Minha Localização");
+                });
+            }
+        }
 
         window.onload = initMap;
     </script>
